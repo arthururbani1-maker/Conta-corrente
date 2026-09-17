@@ -649,5 +649,207 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
   setInterval(ensureLink,1200);
 })();</script>
 
+<style id="dp-style">
+.cc-pr{background:#fff1f2;color:#be123c}.cc-pr .dot{background:#f43f5e}
+</style>
+<script>(function(){
+  var SB='https://tzvsfqsmtmxoaoajqtdi.supabase.co';
+  var ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6dnNmcXNtdG14b2FvYWpxdGRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxMDM3OTYsImV4cCI6MjEwMTY3OTc5Nn0.uRJQxgQ6KPGpg86cm8l2RUaHp8WF3o7J_RwyjzO6nnU';
+  function tok(){try{return localStorage.getItem('cc_token')}catch(e){return null}}
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function brl(c){return 'R$ '+(Number(c||0)/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+  function cent(v){if(v==null)return 0;v=String(v).trim().replace(/\./g,'').replace(',','.');var n=parseFloat(v);return isNaN(n)?0:Math.round(n*100)}
+  function dbr(d){if(!d)return '—';var p=String(d).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:d}
+  function today(){return new Date().toISOString().slice(0,10)}
+  async function rpc(fn,args){args=args||{};
+    var r=await fetch(SB+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:ANON,Authorization:'Bearer '+ANON,'Content-Type':'application/json'},body:JSON.stringify(Object.assign({p_token:tok()},args))});
+    var t=await r.text(),d=null;try{d=t?JSON.parse(t):null}catch(e){d=t}
+    if(!r.ok)throw new Error((d&&(d.message||d.error||d.hint))||('Erro '+r.status));return d;}
+  function fld(l,inner){return '<div class="cc-f"><label>'+l+'</label>'+inner+'</div>'}
+  function kpi(l,v){return '<div class="cc-kpi"><div class="l">'+l+'</div><div class="v">'+v+'</div></div>'}
+  function kpiC(l,v,c){return '<div class="cc-kpi"><div class="l">'+l+'</div><div class="v" style="color:'+c+'">'+v+'</div></div>'}
+
+  var cats=[],lista=[],resumo={},recs=[],filtros={de:'',ate:'',categoria:'',status:''},aba='desp',saving=false;
+  var poll=null,openHash='';
+  function ov(){return document.getElementById('dp-ov')}
+  function setActive(on){document.querySelectorAll('[data-dp-link]').forEach(function(b){
+    if(on){b.classList.add('bg-brand-50','text-brand-700');b.classList.remove('text-slate-500');}
+    else{b.classList.remove('bg-brand-50','text-brand-700');b.classList.add('text-slate-500');}});}
+  function navClick(e){var t=e.target,a=t&&t.closest?t.closest('a'):null;if(a&&a.closest('nav')&&!a.hasAttribute('data-dp-link'))close();}
+  function close(){var o=ov();if(o)o.remove();if(poll){clearInterval(poll);poll=null;}
+    window.removeEventListener('hashchange',close);window.removeEventListener('popstate',close);
+    document.removeEventListener('click',navClick,true);setActive(false);}
+  window.__fecharDespesas=close;
+
+  function statusPill(s,vencida){
+    if(s==='pago')return '<span class="cc-pill cc-pg"><span class="dot"></span>Pago</span>';
+    if(vencida)return '<span class="cc-pill cc-pr"><span class="dot"></span>Vencida</span>';
+    return '<span class="cc-pill cc-pa"><span class="dot"></span>A pagar</span>';
+  }
+  function tabs(active){return '<div class="cc-tabs"><button class="cc-tab '+(active==='desp'?'on':'')+'" onclick="window.__dptab(\'desp\')">Despesas</button><button class="cc-tab '+(active==='recor'?'on':'')+'" onclick="window.__dptab(\'recor\')">Recorrentes</button></div>';}
+  window.__dptab=function(a){aba=a;if(a==='recor')carregarRecs();else carregarLista();};
+
+  window.__abrirDespesas=async function(){
+    if(ov())return;
+    var d=document.createElement('div');d.id='dp-ov';d.className='cc-ov';
+    d.innerHTML='<div class="cc-wrap"><div class="cc-head"><div><h1 class="cc-h1">💸 Despesas</h1><div class="cc-sub">Carregando…</div></div><button class="cc-btn cc-ghost" onclick="window.__fecharDespesas()">Fechar</button></div><div id="dp-body"></div></div>';
+    document.body.appendChild(d);
+    openHash=location.hash;
+    window.addEventListener('hashchange',close);window.addEventListener('popstate',close);
+    document.addEventListener('click',navClick,true);
+    poll=setInterval(function(){if(location.hash!==openHash)close();},300);
+    setActive(true);
+    try{cats=await rpc('despesa_categorias_listar');if(!Array.isArray(cats))cats=[];await carregarLista();}
+    catch(e){bodyErr(e.message)}
+  };
+  function bodyErr(m){var b=document.getElementById('dp-body');if(b)b.innerHTML='<div class="cc-card cc-pad"><div class="cc-msg cc-err">'+esc(m)+'</div><div class="cc-muted">Esta área precisa da permissão de Despesas.</div></div>'}
+
+  async function carregarLista(){
+    document.querySelector('#dp-ov .cc-sub').textContent='As despesas da operação — o que a empresa gasta além dos produtos.';
+    try{var r=await rpc('despesas_listar',{p_de:filtros.de||null,p_ate:filtros.ate||null,p_categoria:filtros.categoria||null,p_status:filtros.status||''});
+      lista=(r&&r.itens)||[];resumo=(r&&r.resumo)||{};viewLista();}catch(e){bodyErr(e.message)}
+  }
+  function viewLista(){
+    var optC='<option value="">Todas as categorias</option>'+cats.map(function(c){return '<option value="'+c.id+'"'+(String(filtros.categoria)===String(c.id)?' selected':'')+'>'+esc(c.nome)+'</option>'}).join('');
+    var linhas=lista.map(function(d){
+      return '<tr onclick="window.__editDespesa('+d.id+')">'+
+        '<td class="cc-muted">'+dbr(d.data)+'</td><td>'+esc(d.categoria)+(d.subcategoria?' <span class="cc-muted">/ '+esc(d.subcategoria)+'</span>':'')+'</td>'+
+        '<td>'+esc(d.descricao)+'</td><td class="cc-muted">'+dbr(d.vencimento)+'</td>'+
+        '<td class="cc-r"><b>'+brl(d.valor)+'</b></td><td>'+statusPill(d.status,d.vencida)+'</td>'+
+        '<td class="cc-r" onclick="event.stopPropagation()">'+(d.status==='a_pagar'?'<button class="cc-btn cc-primary" style="padding:5px 10px;font-size:12px" onclick="window.__pagarDespesa('+d.id+')">Pagar</button>':'')+'</td></tr>';
+    }).join('');
+    document.getElementById('dp-body').innerHTML=
+      tabs('desp')+
+      '<div class="cc-kpis">'+kpi('Total',brl(resumo.total))+kpiC('Pago',brl(resumo.pago),'#059669')+kpiC('A pagar',brl(resumo.a_pagar),'#b45309')+kpiC('Vencidas',brl(resumo.vencidas),'#be123c')+'</div>'+
+      '<div class="cc-filtros">'+
+        fld('De','<input type="date" class="cc-inp" value="'+esc(filtros.de)+'" onchange="window.__df(\'de\',this.value)">')+
+        fld('Até','<input type="date" class="cc-inp" value="'+esc(filtros.ate)+'" onchange="window.__df(\'ate\',this.value)">')+
+        fld('Categoria','<select class="cc-inp" onchange="window.__df(\'categoria\',this.value)">'+optC+'</select>')+
+        fld('Status','<select class="cc-inp" onchange="window.__df(\'status\',this.value)"><option value="">Todas</option><option value="a_pagar"'+(filtros.status==='a_pagar'?' selected':'')+'>A pagar</option><option value="pago"'+(filtros.status==='pago'?' selected':'')+'>Pagas</option></select>')+
+        '<div style="margin-left:auto"><button class="cc-btn cc-primary" onclick="window.__novaDespesa()">+ Nova despesa</button></div>'+
+      '</div>'+
+      '<div class="cc-card"><div style="overflow-x:auto"><table class="cc-tb"><thead><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th>Vencimento</th><th class="cc-r">Valor</th><th>Status</th><th></th></tr></thead><tbody>'+
+      (linhas||'<tr><td colspan="7" class="cc-muted" style="padding:24px;text-align:center">Nenhuma despesa no período.</td></tr>')+'</tbody></table></div></div>';
+  }
+  window.__df=function(k,v){filtros[k]=v;carregarLista()};
+  window.__pagarDespesa=async function(id){try{await rpc('despesa_pagar',{p_id:id,p_data:today(),p_forma:null});carregarLista();}catch(e){alert(e.message)}};
+
+  // ---- Nova / editar despesa ----
+  window.__novaDespesa=function(){formDespesa(null)};
+  window.__editDespesa=function(id){var d=lista.find(function(x){return x.id===id});formDespesa(d||null)};
+  function formDespesa(d,msg){
+    var isEdit=!!d, pago=d&&d.status==='pago';
+    var optC='<option value="">Sem categoria</option>'+cats.map(function(c){return '<option value="'+c.id+'"'+(d&&String(d.categoria_id)===String(c.id)?' selected':'')+'>'+esc(c.nome)+'</option>'}).join('');
+    document.getElementById('dp-body').innerHTML=
+      '<div class="cc-card cc-pad">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h3 style="margin:0">'+(isEdit?'Despesa':'Nova despesa')+'</h3><button class="cc-btn cc-ghost" onclick="window.__voltarDesp()">← Voltar</button></div>'+
+      (msg?'<div class="cc-msg cc-err">'+esc(msg)+'</div>':'')+
+      '<div class="cc-grid2">'+
+        fld('Categoria','<select class="cc-inp" id="dp-cat">'+optC+'</select>')+
+        fld('Subcategoria (opcional)','<input class="cc-inp" id="dp-sub" value="'+esc(d&&d.subcategoria||'')+'" placeholder="Ex: energia da loja">')+
+        fld('Descrição','<input class="cc-inp" id="dp-desc" value="'+esc(d&&d.descricao||'')+'" placeholder="Descrição da despesa">')+
+        fld('Valor (R$)','<input class="cc-inp" id="dp-val" value="'+(d?String(d.valor/100).replace('.',','):'')+'" placeholder="0,00">')+
+        fld('Data','<input type="date" class="cc-inp" id="dp-data" value="'+(d&&d.data?String(d.data).slice(0,10):today())+'">')+
+        fld('Vencimento','<input type="date" class="cc-inp" id="dp-venc" value="'+(d&&d.vencimento?String(d.vencimento).slice(0,10):'')+'">')+
+        fld('Forma de pagamento','<input class="cc-inp" id="dp-forma" value="'+esc(d&&d.forma_pagamento||'')+'" placeholder="PIX, boleto…">')+
+        fld('Conta / observação','<input class="cc-inp" id="dp-conta" value="'+esc(d&&d.conta||'')+'" placeholder="Opcional">')+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;margin-top:16px;border-top:1px solid #f1f5f9;padding-top:14px;flex-wrap:wrap">'+
+        '<div>'+(isEdit&&!pago?'<button class="cc-btn cc-danger" onclick="window.__cancelarDespesa('+d.id+')">Cancelar despesa</button>':'')+(isEdit&&pago?'<button class="cc-btn cc-ghost" onclick="window.__reabrirDespesa('+d.id+')">Reabrir (desfazer pagamento)</button>':'')+'</div>'+
+        '<div style="display:flex;gap:8px">'+(isEdit&&!pago?'<button class="cc-btn cc-ghost" onclick="window.__pagarDespesa2('+d.id+')">Marcar como paga</button>':'')+
+          '<button class="cc-btn cc-primary" id="dp-save" onclick="window.__salvarDespesa('+(d?d.id:'null')+')">'+(isEdit?'Salvar':'Lançar despesa')+'</button></div>'+
+      '</div></div>';
+  }
+  window.__voltarDesp=function(){carregarLista()};
+  window.__salvarDespesa=async function(id){
+    if(saving)return;var dados={categoria_id:document.getElementById('dp-cat').value||'',subcategoria:document.getElementById('dp-sub').value,
+      descricao:document.getElementById('dp-desc').value,valor:String(cent(document.getElementById('dp-val').value)),
+      data:document.getElementById('dp-data').value,vencimento:document.getElementById('dp-venc').value,
+      forma_pagamento:document.getElementById('dp-forma').value,conta:document.getElementById('dp-conta').value};
+    if(!dados.descricao.trim())return formDespesa(id?lista.find(function(x){return x.id===id}):null,'Informe a descrição.');
+    if(cent(document.getElementById('dp-val').value)<=0)return formDespesa(id?lista.find(function(x){return x.id===id}):null,'Informe um valor maior que zero.');
+    saving=true;var b=document.getElementById('dp-save');b.disabled=true;b.innerHTML='<span class="cc-spin"></span>';
+    try{await rpc('despesa_salvar',{p_id:id||null,p_dados:dados});saving=false;carregarLista();}catch(e){saving=false;formDespesa(id?lista.find(function(x){return x.id===id}):null,e.message);}
+  };
+  window.__pagarDespesa2=async function(id){try{await rpc('despesa_pagar',{p_id:id,p_data:today(),p_forma:null});carregarLista();}catch(e){alert(e.message)}};
+  window.__reabrirDespesa=async function(id){try{await rpc('despesa_reabrir',{p_id:id});carregarLista();}catch(e){alert(e.message)}};
+  window.__cancelarDespesa=async function(id){var m=prompt('Cancelar esta despesa (o histórico é preservado). Motivo (opcional):');if(m===null)return;try{await rpc('despesa_cancelar',{p_id:id,p_motivo:m||null});carregarLista();}catch(e){alert(e.message)}};
+
+  // ---- Recorrentes ----
+  async function carregarRecs(){
+    document.querySelector('#dp-ov .cc-sub').textContent='Despesas fixas do mês — geram um lançamento por mês, sem duplicar.';
+    try{var r=await rpc('despesa_recorrentes_listar');recs=Array.isArray(r)?r:[];viewRecs();}catch(e){bodyErr(e.message)}
+  }
+  function viewRecs(){
+    var linhas=recs.map(function(r){
+      return '<tr onclick="window.__editRec('+r.id+')"><td>'+esc(r.descricao)+'</td><td>'+esc(r.categoria)+'</td>'+
+        '<td class="cc-r"><b>'+brl(r.valor)+'</b></td><td class="cc-r">'+(r.dia_vencimento?('dia '+r.dia_vencimento):'—')+'</td>'+
+        '<td>'+(r.ativo?'<span class="cc-pill cc-pg"><span class="dot"></span>Ativa</span>':'<span class="cc-pill cc-pc"><span class="dot"></span>Inativa</span>')+'</td></tr>';
+    }).join('');
+    document.getElementById('dp-body').innerHTML=
+      tabs('recor')+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><div class="cc-muted" style="font-size:13px">Cadastre aqui aluguel, contabilidade, sistema… e gere os lançamentos do mês com um clique.</div>'+
+        '<div style="display:flex;gap:8px"><button class="cc-btn cc-ghost" onclick="window.__gerarMes()">Gerar lançamentos do mês</button><button class="cc-btn cc-primary" onclick="window.__novaRec()">+ Nova recorrente</button></div></div>'+
+      '<div class="cc-card"><div style="overflow-x:auto"><table class="cc-tb"><thead><tr><th>Descrição</th><th>Categoria</th><th class="cc-r">Valor</th><th class="cc-r">Vence</th><th>Situação</th></tr></thead><tbody>'+
+      (linhas||'<tr><td colspan="5" class="cc-muted" style="padding:24px;text-align:center">Nenhuma despesa recorrente cadastrada.</td></tr>')+'</tbody></table></div></div>'+
+      '<div id="dp-recmsg"></div>';
+  }
+  window.__gerarMes=async function(){
+    try{var r=await rpc('despesas_gerar_mes',{p_ref_mes:today()});var m=document.getElementById('dp-recmsg');
+      if(m)m.innerHTML='<div class="cc-msg cc-ok" style="margin-top:12px">'+(r.criadas>0?(r.criadas+' lançamento(s) criado(s) para este mês. Veja na aba Despesas.'):'Este mês já estava gerado — nada duplicado.')+'</div>';}
+    catch(e){alert(e.message)}
+  };
+  window.__novaRec=function(){formRec(null)};
+  window.__editRec=function(id){formRec(recs.find(function(x){return x.id===id})||null)};
+  function formRec(r,msg){
+    var optC='<option value="">Sem categoria</option>'+cats.map(function(c){return '<option value="'+c.id+'"'+(r&&String(r.categoria_id)===String(c.id)?' selected':'')+'>'+esc(c.nome)+'</option>'}).join('');
+    document.getElementById('dp-body').innerHTML=
+      '<div class="cc-card cc-pad">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h3 style="margin:0">'+(r?'Despesa recorrente':'Nova despesa recorrente')+'</h3><button class="cc-btn cc-ghost" onclick="window.__voltarRec()">← Voltar</button></div>'+
+      (msg?'<div class="cc-msg cc-err">'+esc(msg)+'</div>':'')+
+      '<div class="cc-grid2">'+
+        fld('Categoria','<select class="cc-inp" id="dr-cat">'+optC+'</select>')+
+        fld('Descrição','<input class="cc-inp" id="dr-desc" value="'+esc(r&&r.descricao||'')+'" placeholder="Ex: Aluguel loja">')+
+        fld('Valor (R$)','<input class="cc-inp" id="dr-val" value="'+(r?String(r.valor/100).replace('.',','):'')+'" placeholder="0,00">')+
+        fld('Dia do vencimento','<input class="cc-inp" id="dr-dia" value="'+esc(r&&r.dia_vencimento||'')+'" placeholder="Ex: 5">')+
+        fld('Forma de pagamento','<input class="cc-inp" id="dr-forma" value="'+esc(r&&r.forma_pagamento||'')+'" placeholder="Opcional">')+
+        fld('Subcategoria (opcional)','<input class="cc-inp" id="dr-sub" value="'+esc(r&&r.subcategoria||'')+'" placeholder="Opcional">')+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;margin-top:16px;border-top:1px solid #f1f5f9;padding-top:14px">'+
+        '<div>'+(r?'<button class="cc-btn cc-ghost" onclick="window.__ativarRec('+r.id+','+(r.ativo?'false':'true')+')">'+(r.ativo?'Desativar':'Reativar')+'</button>':'')+'</div>'+
+        '<button class="cc-btn cc-primary" id="dr-save" onclick="window.__salvarRec('+(r?r.id:'null')+')">'+(r?'Salvar':'Cadastrar')+'</button>'+
+      '</div></div>';
+  }
+  window.__voltarRec=function(){carregarRecs()};
+  window.__salvarRec=async function(id){
+    var dados={categoria_id:document.getElementById('dr-cat').value||'',descricao:document.getElementById('dr-desc').value,
+      valor:String(cent(document.getElementById('dr-val').value)),dia_vencimento:document.getElementById('dr-dia').value,
+      forma_pagamento:document.getElementById('dr-forma').value,subcategoria:document.getElementById('dr-sub').value};
+    if(!dados.descricao.trim())return formRec(id?recs.find(function(x){return x.id===id}):null,'Informe a descrição.');
+    if(cent(document.getElementById('dr-val').value)<=0)return formRec(id?recs.find(function(x){return x.id===id}):null,'Informe um valor maior que zero.');
+    var b=document.getElementById('dr-save');b.disabled=true;b.innerHTML='<span class="cc-spin"></span>';
+    try{await rpc('despesa_recorrente_salvar',{p_id:id||null,p_dados:dados});carregarRecs();}catch(e){formRec(id?recs.find(function(x){return x.id===id}):null,e.message);}
+  };
+  window.__ativarRec=async function(id,at){try{await rpc('despesa_recorrente_ativar',{p_id:id,p_ativo:at});carregarRecs();}catch(e){alert(e.message)}};
+
+  // ---- link na sidebar ----
+  function pode(){return window.__PAPEL==='admin'||((window.__PERMS||[]).indexOf('despesas.ver')>=0)}
+  function ensureLink(){
+    if(!pode())return;
+    document.querySelectorAll('aside nav').forEach(function(nav){
+      if(!/flex-col/.test(nav.className))return;
+      if(nav.querySelector('[data-dp-link]'))return;
+      var b=document.createElement('button');b.setAttribute('data-dp-link','1');
+      b.className='flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100';
+      b.style.width='100%';b.style.textAlign='left';b.style.background='none';b.style.border='0';b.style.cursor='pointer';
+      b.innerHTML='<span style="font-size:18px;line-height:1">💸</span> Despesas';
+      b.onclick=window.__abrirDespesas;
+      var pp=nav.querySelector('[data-pp-link]');
+      if(pp)nav.insertBefore(b,pp);else nav.appendChild(b);
+    });
+  }
+  setInterval(ensureLink,1200);
+})();</script>
+
   </body>
 </html>
