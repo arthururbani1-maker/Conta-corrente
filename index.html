@@ -957,6 +957,7 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
   var SB='https://tzvsfqsmtmxoaoajqtdi.supabase.co';
   var ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6dnNmcXNtdG14b2FvYWpxdGRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxMDM3OTYsImV4cCI6MjEwMTY3OTc5Nn0.uRJQxgQ6KPGpg86cm8l2RUaHp8WF3o7J_RwyjzO6nnU';
   function tok(){try{return localStorage.getItem('cc_token')}catch(e){return null}}
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
   function brl(c){return 'R$ '+(Number(c||0)/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
   function pct(v){return v==null?'—':(String(v).replace('.',',')+'%')}
   async function rpc(fn,args){args=args||{};
@@ -1017,7 +1018,7 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
       '<div class="dg-pl">'+
         '<div class="row"><span class="lbl">Vendas (receita)</span><span class="val">'+brl(r.vendas)+'</span></div>'+
         '<div class="row"><span class="lbl op">(−) Custo dos produtos vendidos</span><span class="val op">'+brl(r.cmv)+'</span></div>'+
-        '<div class="row"><span class="lbl g">(=) Lucro bruto <span class="tag">margem '+pct(r.margem_bruta)+'</span></span><span class="val g">'+brl(r.lucro_bruto)+'</span></div>'+
+        '<div class="row" style="cursor:pointer" onclick="window.__abrirLucro()"><span class="lbl g">(=) Lucro bruto <span class="tag">margem '+pct(r.margem_bruta)+'</span> <span class="tag" style="color:#60a5fa">🔎 de onde veio</span></span><span class="val g">'+brl(r.lucro_bruto)+'</span></div>'+
         '<div class="row"><span class="lbl op">(−) Despesas da operação</span><span class="val op">'+brl(r.despesas)+'</span></div>'+
         '<div class="row"><span class="lbl big">(=) Resultado operacional <span class="tag">margem '+pct(r.margem_liquida)+'</span></span><span class="val big '+(resOp>=0?'g':'r')+'">'+brl(resOp)+'</span></div>'+
       '</div>'+
@@ -1034,6 +1035,38 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
         kpi('Fornecedores a pagar',brl(fi.fornecedores_a_pagar))+
       '</div>'+
       '<div class="cc-muted" style="font-size:12px;margin-top:12px">Vendas, custo, lucro e recebimentos vêm dos pedidos; despesas do módulo de despesas; estoque do histórico. Cada número tem uma única fonte.</div>';
+  }
+
+  // ---- Drill-down "de onde veio o lucro" ----
+  var drillDim='produto';
+  function drillTabs(active){
+    var t=[['produto','Por produto'],['cliente','Por cliente'],['pedido','Por pedido'],['fornecedor','Por fornecedor']];
+    return '<div class="dg-per" style="margin-top:2px">'+t.map(function(o){return '<button class="dg-pb '+(active===o[0]?'on':'')+'" onclick="window.__lucroTab(\''+o[0]+'\')">'+o[1]+'</button>'}).join('')+'</div>';
+  }
+  function barraLucro(){return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><h3 style="margin:0">🔎 De onde veio o lucro</h3><button class="cc-btn cc-ghost" onclick="window.__voltarPainel()">← Voltar ao painel</button></div>';}
+  window.__voltarPainel=function(){carregar();};
+  window.__abrirLucro=function(){drillDim='produto';carregarLucro();};
+  window.__lucroTab=function(d){drillDim=d;carregarLucro();};
+  async function carregarLucro(){
+    var b=document.getElementById('dg-body');if(b)b.innerHTML=barraLucro()+drillTabs(drillDim)+'<div class="cc-card cc-pad cc-muted">Carregando…</div>';
+    var pr=periodo();
+    try{
+      if(drillDim==='fornecedor'){var r=await rpc('fornecedores_desempenho',{p_de:pr.de,p_ate:pr.ate});renderLucroForn(Array.isArray(r)?r:[]);}
+      else{var r2=await rpc('relatorio_lucro',{p_de:pr.de,p_ate:pr.ate,p_dim:drillDim});renderLucro(r2);}
+    }catch(e){document.getElementById('dg-body').innerHTML=barraLucro()+drillTabs(drillDim)+'<div class="cc-card cc-pad"><div class="cc-msg cc-err">'+String(e.message)+'</div></div>';}
+  }
+  function renderLucro(d){
+    var tot=d.total||{},itens=d.itens||[];
+    var linhas=itens.map(function(x){return '<tr><td>'+esc(x.rotulo)+'</td><td class="cc-r">'+(x.qtd||0)+'</td><td class="cc-r">'+brl(x.receita)+'</td><td class="cc-r">'+brl(x.custo)+'</td><td class="cc-r" style="color:#059669;font-weight:700">'+brl(x.lucro)+'</td><td class="cc-r">'+(x.margem!=null?pct(x.margem):'—')+'</td></tr>';}).join('');
+    var titulo={produto:'Produto',cliente:'Cliente',pedido:'Pedido'}[drillDim];
+    document.getElementById('dg-body').innerHTML=barraLucro()+drillTabs(drillDim)+
+      '<div class="cc-kpis" style="grid-template-columns:repeat(3,1fr)">'+kpi('Receita',brl(tot.receita))+kpi('Custo',brl(tot.custo))+kpi('Lucro',brl(tot.lucro))+'</div>'+
+      '<div class="cc-card"><div style="overflow-x:auto"><table class="cc-tb"><thead><tr><th>'+titulo+'</th><th class="cc-r">Qtd</th><th class="cc-r">Receita</th><th class="cc-r">Custo</th><th class="cc-r">Lucro</th><th class="cc-r">Margem</th></tr></thead><tbody>'+(linhas||'<tr><td colspan="6" class="cc-muted" style="padding:24px;text-align:center">Nada no período.</td></tr>')+'</tbody></table></div></div>';
+  }
+  function renderLucroForn(list){
+    var linhas=list.map(function(f){return '<tr><td>'+esc(f.fornecedor)+'</td><td class="cc-r">'+brl(f.comprado_custo)+'</td><td class="cc-r">'+brl(f.valor_vendido)+'</td><td class="cc-r" style="color:#059669;font-weight:700">'+brl(f.lucro_realizado)+'</td><td class="cc-r">'+(f.margem!=null?pct(f.margem):'—')+'</td></tr>';}).join('');
+    document.getElementById('dg-body').innerHTML=barraLucro()+drillTabs('fornecedor')+
+      '<div class="cc-card"><div style="overflow-x:auto"><table class="cc-tb"><thead><tr><th>Fornecedor</th><th class="cc-r">Comprado</th><th class="cc-r">Vendido</th><th class="cc-r">Lucro realizado</th><th class="cc-r">Margem</th></tr></thead><tbody>'+(linhas||'<tr><td colspan="5" class="cc-muted" style="padding:24px;text-align:center">Nada.</td></tr>')+'</tbody></table></div></div>';
   }
 
   function ensureLink(){
