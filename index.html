@@ -392,11 +392,21 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
     if(!r.ok)throw new Error((d&&(d.message||d.error||d.hint))||('Erro '+r.status));return d;}
 
   var forn=[],prod=[],lista=[],resumo={},filtros={de:'',ate:'',fornecedor:'',status:''},novoItens=[],saving=false;
+  var ccPoll=null,ccOpenHash='';
   function ov(){return document.getElementById('cc-ov')}
   function ccSetActive(on){document.querySelectorAll('[data-cc-link]').forEach(function(b){
     if(on){b.classList.add('bg-brand-50','text-brand-700');b.classList.remove('text-slate-500');}
     else{b.classList.remove('bg-brand-50','text-brand-700');b.classList.add('text-slate-500');}});}
-  function close(){var o=ov();if(o)o.remove();window.removeEventListener('hashchange',close);ccSetActive(false);}
+  // Fecha a tela quando o usuário clica em QUALQUER link de menu (sidebar ou topo)
+  function ccNavClick(e){var t=e.target;var a=t&&t.closest?t.closest('a'):null;if(a&&a.closest('nav')&&!a.hasAttribute('data-cc-link'))close();}
+  function close(){
+    var o=ov();if(o)o.remove();
+    if(ccPoll){clearInterval(ccPoll);ccPoll=null;}
+    window.removeEventListener('hashchange',close);
+    window.removeEventListener('popstate',close);
+    document.removeEventListener('click',ccNavClick,true);
+    ccSetActive(false);
+  }
   window.__fecharCompras=close;
 
   function pillPgto(s){var m={pago:['cc-pg','Pago'],parcial:['cc-pp','Parcial'],em_aberto:['cc-pa','Em aberto'],cancelada:['cc-pc','Cancelada']};var x=m[s]||m.em_aberto;return '<span class="cc-pill '+x[0]+'"><span class="dot"></span>'+x[1]+'</span>'}
@@ -406,7 +416,12 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
     var d=document.createElement('div');d.id='cc-ov';d.className='cc-ov';
     d.innerHTML='<div class="cc-wrap"><div class="cc-head"><div><h1 class="cc-h1">🛒 Compras</h1><div class="cc-sub">Carregando…</div></div><button class="cc-btn cc-ghost" onclick="window.__fecharCompras()">Fechar</button></div><div id="cc-body"></div></div>';
     document.body.appendChild(d);
+    ccOpenHash=location.hash;
     window.addEventListener('hashchange',close);
+    window.addEventListener('popstate',close);
+    document.addEventListener('click',ccNavClick,true);
+    // rede de segurança: se a rota mudar por qualquer meio, fecha
+    ccPoll=setInterval(function(){ if(location.hash!==ccOpenHash) close(); },300);
     ccSetActive(true);
     try{
       var a=await Promise.all([rpc('fornecedores_listar',{p_q:'',p_apenas_ativos:false}),rpc('produtos_listar',{p_q:'',p_apenas_ativos:true})]);
