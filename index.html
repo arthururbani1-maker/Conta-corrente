@@ -686,8 +686,11 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
     if(vencida)return '<span class="cc-pill cc-pr"><span class="dot"></span>Vencida</span>';
     return '<span class="cc-pill cc-pa"><span class="dot"></span>A pagar</span>';
   }
-  function tabs(active){return '<div class="cc-tabs"><button class="cc-tab '+(active==='desp'?'on':'')+'" onclick="window.__dptab(\'desp\')">Despesas</button><button class="cc-tab '+(active==='recor'?'on':'')+'" onclick="window.__dptab(\'recor\')">Recorrentes</button></div>';}
-  window.__dptab=function(a){aba=a;if(a==='recor')carregarRecs();else carregarLista();};
+  function tabs(active){return '<div class="cc-tabs">'+
+    '<button class="cc-tab '+(active==='desp'?'on':'')+'" onclick="window.__dptab(\'desp\')">Despesas</button>'+
+    '<button class="cc-tab '+(active==='recor'?'on':'')+'" onclick="window.__dptab(\'recor\')">Recorrentes</button>'+
+    '<button class="cc-tab '+(active==='banco'?'on':'')+'" onclick="window.__dptab(\'banco\')">Conciliar banco</button></div>';}
+  window.__dptab=function(a){aba=a;if(a==='recor')carregarRecs();else if(a==='banco')carregarBanco();else carregarLista();};
 
   window.__abrirDespesas=async function(){
     if(ov())return;
@@ -831,6 +834,90 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
     try{await rpc('despesa_recorrente_salvar',{p_id:id||null,p_dados:dados});carregarRecs();}catch(e){formRec(id?recs.find(function(x){return x.id===id}):null,e.message);}
   };
   window.__ativarRec=async function(id,at){try{await rpc('despesa_recorrente_ativar',{p_id:id,p_ativo:at});carregarRecs();}catch(e){alert(e.message)}};
+
+  // ---- Conciliar banco (saídas do extrato) ----
+  var contas=[],contaSel='',saidas=[],prova={},despConc=[],comprasAb=[],saidaAtual=null;
+  async function carregarBanco(){
+    document.querySelector('#dp-ov .cc-sub').textContent='Classifique as saídas do extrato: despesa, pagamento a fornecedor ou ignorar.';
+    try{
+      if(contas.length===0){contas=await rpc('contas_bancarias_listar');if(!Array.isArray(contas))contas=[];}
+      if(!contaSel&&contas.length)contaSel=String(contas[0].id);
+      var a=await Promise.all([
+        rpc('banco_saidas_listar',{p_conta:contaSel||null,p_de:filtros.de||null,p_ate:filtros.ate||null}),
+        rpc('conciliacao_saidas_resumo',{p_conta:contaSel||null,p_de:filtros.de||null,p_ate:filtros.ate||null})]);
+      saidas=Array.isArray(a[0])?a[0]:[];prova=a[1]||{};viewBanco();
+    }catch(e){bodyErr(e.message)}
+  }
+  function viewBanco(){
+    if(contas.length===0){
+      document.getElementById('dp-body').innerHTML=tabs('banco')+'<div class="cc-card cc-pad cc-muted">Nenhuma conta bancária cadastrada ainda. Cadastre uma conta e importe o extrato na aba <b>Conciliação</b> do sistema — as saídas aparecerão aqui para classificar.</div>';return;
+    }
+    var optCta=contas.map(function(c){return '<option value="'+c.id+'"'+(String(contaSel)===String(c.id)?' selected':'')+'>'+esc(c.nome)+'</option>'}).join('');
+    var linhas=saidas.map(function(s){
+      var acao;
+      if(s.pendente){
+        var sug=s.sugestao?('<button class="cc-btn cc-primary" style="padding:5px 10px;font-size:12px" onclick="window.__concSug('+s.id+','+s.sugestao.despesa_id+')">✓ '+esc(s.sugestao.descricao)+'</button> '):'';
+        acao=sug+'<button class="cc-btn cc-ghost" style="padding:5px 10px;font-size:12px" onclick="window.__classificar('+s.id+')">Classificar</button>';
+      }else{
+        acao='<span class="cc-pill cc-pg" style="margin-right:6px"><span class="dot"></span>'+esc(s.destino||'Classificada')+'</span><button class="cc-btn cc-ghost" style="padding:4px 9px;font-size:12px" onclick="window.__desfazerSaida('+s.id+')">Desfazer</button>';
+      }
+      return '<tr><td class="cc-muted">'+dbr(s.data)+'</td><td>'+esc(s.descricao||s.pagador||'—')+'</td>'+
+        '<td class="cc-r"><b>'+brl(s.valor)+'</b></td><td class="cc-r" style="white-space:nowrap">'+acao+'</td></tr>';
+    }).join('');
+    document.getElementById('dp-body').innerHTML=
+      tabs('banco')+
+      '<div class="cc-kpis">'+kpi('Saídas do banco',brl(prova.saidas_total))+kpiC('Classificado',brl(prova.classificado),'#059669')+kpiC('Pendente',brl(prova.pendente),'#b45309')+kpi('A classificar',(prova.pendente_qtd||0)+' saída(s)')+'</div>'+
+      '<div class="cc-filtros">'+
+        fld('Conta','<select class="cc-inp" onchange="window.__dbconta(this.value)">'+optCta+'</select>')+
+        fld('De','<input type="date" class="cc-inp" value="'+esc(filtros.de)+'" onchange="window.__df2(\'de\',this.value)">')+
+        fld('Até','<input type="date" class="cc-inp" value="'+esc(filtros.ate)+'" onchange="window.__df2(\'ate\',this.value)">')+
+      '</div>'+
+      '<div class="cc-card"><div style="overflow-x:auto"><table class="cc-tb"><thead><tr><th>Data</th><th>Descrição no banco</th><th class="cc-r">Valor</th><th class="cc-r">Situação</th></tr></thead><tbody>'+
+      (linhas||'<tr><td colspan="4" class="cc-muted" style="padding:24px;text-align:center">Nenhuma saída neste período/conta.</td></tr>')+'</tbody></table></div></div>';
+  }
+  window.__dbconta=function(v){contaSel=v;carregarBanco()};
+  window.__df2=function(k,v){filtros[k]=v;carregarBanco()};
+  window.__concSug=async function(bid,did){if(!confirm('Confirmar que esta saída é a despesa sugerida? A despesa será marcada como paga.'))return;
+    try{await rpc('saida_conciliar_despesa',{p_banco_mov:bid,p_despesa:did,p_conferido:true,p_justificativa:null});carregarBanco();}catch(e){alert(e.message)}};
+  window.__desfazerSaida=async function(bid){if(!confirm('Desfazer a classificação desta saída? O efeito (pagamento/despesa) será revertido.'))return;
+    try{await rpc('saida_desfazer',{p_banco_mov:bid,p_motivo:null});carregarBanco();}catch(e){alert(e.message)}};
+
+  window.__classificar=async function(bid){
+    saidaAtual=saidas.find(function(s){return s.id===bid});
+    try{var a=await Promise.all([rpc('despesas_conciliaveis',{p_de:filtros.de||null,p_ate:filtros.ate||null}),
+        rpc('compras_listar',{p_status:'recebida'}).catch(function(){return {itens:[]}})]);
+      despConc=Array.isArray(a[0])?a[0]:[];comprasAb=((a[1]&&a[1].itens)||[]).filter(function(c){return c.em_aberto>0;});viewClassificar();}
+    catch(e){alert(e.message)}
+  };
+  function viewClassificar(msg){
+    var s=saidaAtual;
+    var optD='<option value="">Escolha a despesa em aberto…</option>'+despConc.map(function(d){return '<option value="'+d.id+'"'+(s.sugestao&&s.sugestao.despesa_id===d.id?' selected':'')+'>'+dbr(d.data)+' · '+esc(d.descricao)+' · '+brl(d.valor)+'</option>'}).join('');
+    var optCat='<option value="">Categoria…</option>'+cats.map(function(c){return '<option value="'+c.id+'">'+esc(c.nome)+'</option>'}).join('');
+    var optF='<option value="">Escolha a compra…</option>'+comprasAb.map(function(c){return '<option value="'+c.id+'">Compra #'+c.id+' · '+esc(c.fornecedor)+' · em aberto '+brl(c.em_aberto)+'</option>'}).join('');
+    document.getElementById('dp-body').innerHTML=
+      '<div class="cc-card cc-pad">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h3 style="margin:0">Classificar saída</h3><button class="cc-btn cc-ghost" onclick="window.__voltarBanco()">← Voltar</button></div>'+
+      '<div class="cc-msg" style="background:#f1f5f9;color:#334155">Saída do banco: <b>'+brl(s.valor)+'</b> · '+dbr(s.data)+' · '+esc(s.descricao||s.pagador||'—')+'</div>'+
+      (msg?'<div class="cc-msg cc-err">'+esc(msg)+'</div>':'')+
+      '<div class="cc-sec">Opção 1 — É uma despesa que já está lançada</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end"><div style="flex:1;min-width:220px"><select class="cc-inp" id="cs-desp" style="width:100%">'+optD+'</select></div><button class="cc-btn cc-primary" onclick="window.__concDesp()">Casar e marcar paga</button></div>'+
+      '<div class="cc-sec">Opção 2 — Criar uma despesa nova a partir desta saída</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end"><select class="cc-inp" id="cs-cat">'+optCat+'</select><input class="cc-inp" id="cs-desc" placeholder="Descrição" value="'+esc(s.descricao||'')+'" style="flex:1;min-width:180px"><button class="cc-btn cc-primary" onclick="window.__criarDesp()">Criar despesa (já paga)</button></div>'+
+      '<div class="cc-sec">Opção 3 — É um pagamento a fornecedor</div>'+
+      (comprasAb.length?'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end"><select class="cc-inp" id="cs-forn" style="flex:1;min-width:220px">'+optF+'</select><button class="cc-btn cc-primary" onclick="window.__concForn()">Lançar pagamento ao fornecedor</button></div>':'<div class="cc-muted" style="font-size:13px">Nenhuma compra em aberto para vincular.</div>')+
+      '<div class="cc-sec">Opção 4 — Ignorar</div>'+
+      '<div><button class="cc-btn cc-ghost" onclick="window.__ignorar()">Ignorar esta saída (transferência, etc.)</button></div>'+
+      '</div>';
+  }
+  window.__voltarBanco=function(){carregarBanco()};
+  window.__concDesp=async function(){var d=document.getElementById('cs-desp').value;if(!d)return viewClassificar('Escolha uma despesa.');
+    try{await rpc('saida_conciliar_despesa',{p_banco_mov:saidaAtual.id,p_despesa:+d,p_conferido:true,p_justificativa:null});carregarBanco();}catch(e){viewClassificar(e.message)}};
+  window.__criarDesp=async function(){var c=document.getElementById('cs-cat').value,ds=document.getElementById('cs-desc').value;
+    try{await rpc('saida_criar_despesa',{p_banco_mov:saidaAtual.id,p_categoria:c||null,p_descricao:ds||null,p_conferido:true});carregarBanco();}catch(e){viewClassificar(e.message)}};
+  window.__concForn=async function(){var f=document.getElementById('cs-forn').value;if(!f)return viewClassificar('Escolha a compra.');
+    try{await rpc('saida_conciliar_fornecedor',{p_banco_mov:saidaAtual.id,p_entrada:+f,p_conferido:true});carregarBanco();}catch(e){viewClassificar(e.message)}};
+  window.__ignorar=async function(){var m=prompt('Motivo (opcional):');if(m===null)return;
+    try{await rpc('saida_ignorar',{p_banco_mov:saidaAtual.id,p_motivo:m||null});carregarBanco();}catch(e){viewClassificar(e.message)}};
 
   // ---- link na sidebar ----
   function pode(){return window.__PAPEL==='admin'||((window.__PERMS||[]).indexOf('despesas.ver')>=0)}
