@@ -348,6 +348,9 @@ label.pp-chk.on{border-color:#93b4fc;background:#eef4ff}
 .cc-kpi{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px}
 .cc-kpi .l{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;font-weight:700}
 .cc-kpi .v{font-size:21px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
+.cc-tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid #e2e8f0}
+.cc-tab{border:0;background:none;padding:9px 14px;font-size:14px;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.cc-tab.on{color:#1a4be4;border-bottom-color:#1a4be4}
 .cc-filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px}
 .cc-f{display:flex;flex-direction:column;gap:3px}
 .cc-f label{font-size:11px;color:#64748b;font-weight:600}
@@ -391,7 +394,7 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
     var t=await r.text(),d=null;try{d=t?JSON.parse(t):null}catch(e){d=t}
     if(!r.ok)throw new Error((d&&(d.message||d.error||d.hint))||('Erro '+r.status));return d;}
 
-  var forn=[],prod=[],lista=[],resumo={},filtros={de:'',ate:'',fornecedor:'',status:''},novoItens=[],saving=false;
+  var forn=[],prod=[],lista=[],resumo={},filtros={de:'',ate:'',fornecedor:'',status:''},novoItens=[],saving=false,aba='compras',fdesemp=[];
   var ccPoll=null,ccOpenHash='';
   function ov(){return document.getElementById('cc-ov')}
   function ccSetActive(on){document.querySelectorAll('[data-cc-link]').forEach(function(b){
@@ -451,6 +454,7 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
         '<td>'+pillPgto(c.status_pagamento)+'</td></tr>';
     }).join('');
     document.getElementById('cc-body').innerHTML=
+      tabs('compras')+
       '<div class="cc-kpis">'+
         kpi('Total comprado',brl(resumo.total))+kpi('Pago',brl(resumo.pago))+
         kpi('Em aberto',brl(resumo.em_aberto))+kpi('Compras',(resumo.qtd||0))+
@@ -486,6 +490,32 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
   }
   function fld(l,inner){return '<div class="cc-f"><label>'+l+'</label>'+inner+'</div>'}
   window.__cf=function(k,v){filtros[k]=v;carregarLista()};
+  function tabs(active){return '<div class="cc-tabs"><button class="cc-tab '+(active==='compras'?'on':'')+'" onclick="window.__cctab(\'compras\')">Compras</button><button class="cc-tab '+(active==='fornecedores'?'on':'')+'" onclick="window.__cctab(\'fornecedores\')">Por fornecedor</button></div>';}
+  window.__cctab=function(a){aba=a;if(a==='fornecedores')carregarFornecedores();else carregarLista();};
+  window.__verFornecedor=function(id){filtros.fornecedor=id?String(id):'';aba='compras';carregarLista();};
+  async function carregarFornecedores(){
+    document.querySelector('#cc-ov .cc-sub').textContent='Desempenho das compras por fornecedor.';
+    try{var r=await rpc('fornecedores_desempenho',{p_de:filtros.de||null,p_ate:filtros.ate||null});fdesemp=Array.isArray(r)?r:[];viewFornecedores();}catch(e){bodyErr(e.message)}
+  }
+  function viewFornecedores(){
+    var linhas=fdesemp.map(function(f){
+      return '<tr onclick="window.__verFornecedor('+(f.fornecedor_id||0)+')">'+
+        '<td><b>'+esc(f.fornecedor)+'</b></td>'+
+        '<td class="cc-r">'+(f.qtd_compras||0)+'</td>'+
+        '<td class="cc-r">'+brl(f.comprado_custo)+'</td>'+
+        '<td class="cc-r">'+(f.vendido_qtd||0)+' / '+(f.comprado_qtd||0)+'</td>'+
+        '<td class="cc-r">'+brl(f.valor_vendido)+'</td>'+
+        '<td class="cc-r" style="color:#059669;font-weight:700">'+brl(f.lucro_realizado)+'</td>'+
+        '<td class="cc-r">'+(f.margem!=null?String(f.margem).replace('.',',')+'%':'—')+'</td>'+
+        '<td class="cc-r">'+brl(f.restante_custo)+'</td></tr>';
+    }).join('');
+    document.getElementById('cc-body').innerHTML=
+      tabs('fornecedores')+
+      '<div class="cc-card"><div style="overflow-x:auto"><table class="cc-tb"><thead><tr>'+
+      '<th>Fornecedor</th><th class="cc-r">Compras</th><th class="cc-r">Comprado</th><th class="cc-r">Vend / Comp</th><th class="cc-r">Valor vendido</th><th class="cc-r">Lucro realiz.</th><th class="cc-r">Margem</th><th class="cc-r">Em estoque</th>'+
+      '</tr></thead><tbody>'+(linhas||'<tr><td colspan="8" class="cc-muted" style="padding:24px;text-align:center">Nenhuma compra ainda.</td></tr>')+'</tbody></table></div></div>'+
+      '<div class="cc-muted" style="font-size:12.5px;margin-top:10px">Clique num fornecedor para ver as compras dele.</div>';
+  }
 
   // ---------- NOVA COMPRA ----------
   window.__novaCompra=function(){novoItens=[{produto_id:'',qtd:'',custo:''}];viewNova()};
