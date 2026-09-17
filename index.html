@@ -467,6 +467,23 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
       '</tr></thead><tbody>'+(linhas||'<tr><td colspan="8" class="cc-muted" style="padding:24px;text-align:center">Nenhuma compra no período.</td></tr>')+'</tbody></table></div></div>';
   }
   function kpi(l,v){return '<div class="cc-kpi"><div class="l">'+l+'</div><div class="v">'+v+'</div></div>'}
+  function kpiTom(l,v,c){return '<div class="cc-kpi"><div class="l">'+l+'</div><div class="v" style="color:'+c+'">'+v+'</div></div>'}
+  function rastBlock(r){
+    if(!r||r.status==='cancelada')return '';
+    var vend=r.vendido_qtd||0,rest=r.restante_qtd||0,comp=r.comprado_qtd||0,pct=comp>0?Math.round(100*vend/comp):0;
+    return '<div class="cc-sec">O que já saiu dessa compra</div>'+
+      '<div class="cc-card cc-pad" style="background:#f8fafc">'+
+        '<div style="display:flex;justify-content:space-between;font-size:13px;color:#475569;margin-bottom:6px;flex-wrap:wrap;gap:6px"><span>Vendido: <b style="color:#0f172a">'+vend+'</b> de '+comp+' un ('+pct+'%)</span><span>Ainda em estoque: <b style="color:#0f172a">'+rest+' un</b></span></div>'+
+        '<div style="height:10px;border-radius:999px;background:#e2e8f0;overflow:hidden;margin-bottom:14px"><div style="height:100%;width:'+pct+'%;background:#1a4be4"></div></div>'+
+        '<div class="cc-kpis">'+
+          kpi('Valor de venda realizado',brl(r.vendido_valor))+
+          kpi('Custo do que vendi',brl(r.custo_vendido))+
+          kpiTom('Lucro realizado',brl(r.lucro_realizado),'#059669')+
+          kpi('Estoque restante (custo)',brl(r.restante_custo))+
+        '</div>'+
+        (r.margem!=null?'<div class="cc-muted" style="margin-top:10px;font-size:13px">Margem realizada: <b style="color:#059669">'+String(r.margem).replace('.',',')+'%</b></div>':'<div class="cc-muted" style="margin-top:10px;font-size:13px">Nada vendido ainda desta compra.</div>')+
+      '</div>';
+  }
   function fld(l,inner){return '<div class="cc-f"><label>'+l+'</label>'+inner+'</div>'}
   window.__cf=function(k,v){filtros[k]=v;carregarLista()};
 
@@ -537,9 +554,9 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
 
   // ---------- DETALHE ----------
   window.__verCompra=async function(id){
-    try{var d=await rpc('compra_detalhe',{p_id:id});viewDetalhe(d)}catch(e){bodyErr(e.message)}
+    try{var a=await Promise.all([rpc('compra_detalhe',{p_id:id}),rpc('compra_rastreabilidade',{p_id:id}).catch(function(){return null})]);viewDetalhe(a[0],a[1]);}catch(e){bodyErr(e.message)}
   };
-  function viewDetalhe(d){
+  function viewDetalhe(d,rast){
     var c=d.compra||{},itens=d.itens||[],pags=d.pagamentos||[];
     var trI=itens.map(function(i){return '<tr><td>'+esc(i.produto)+(i.codigo?' <span class="cc-muted">('+esc(i.codigo)+')</span>':'')+'</td><td class="cc-r">'+i.qtd+'</td><td class="cc-r">'+brl(i.custo_unit)+'</td><td class="cc-r"><b>'+brl(i.subtotal)+'</b></td></tr>'}).join('');
     var trP=pags.filter(function(p){return !p.estornado}).map(function(p){return '<tr><td class="cc-muted">'+dbr(p.data)+'</td><td>'+esc(p.forma||'—')+'</td><td class="cc-r"><b>'+brl(p.valor)+'</b></td><td class="cc-r"><button class="cc-btn cc-danger" style="padding:4px 9px;font-size:12px" onclick="window.__estornarPag('+p.id+','+c.id+')">Estornar</button></td></tr>'}).join('');
@@ -550,6 +567,7 @@ table.cc-tb tbody tr:hover{background:#f8fafc}
         '<div style="display:flex;gap:8px"><button class="cc-btn cc-ghost" onclick="window.__voltarLista()">← Voltar</button>'+(cancelada?'':'<button class="cc-btn cc-danger" onclick="window.__cancelarCompra('+c.id+')">Cancelar compra</button>')+'</div></div>'+
       (cancelada&&c.motivo_cancelamento?'<div class="cc-msg cc-err" style="margin-top:10px">Motivo do cancelamento: '+esc(c.motivo_cancelamento)+'</div>':'')+
       '<div class="cc-kpis" style="margin-top:14px">'+kpi('Total da compra',brl(c.total))+kpi('Pago',brl(c.pago))+kpi('Em aberto',brl(c.em_aberto))+kpi('Itens',itens.length)+'</div>'+
+      rastBlock(rast)+
       '<div class="cc-sec">Produtos comprados</div>'+
       '<div style="overflow-x:auto"><table class="cc-tb"><thead><tr><th>Produto</th><th class="cc-r">Qtd</th><th class="cc-r">Custo un.</th><th class="cc-r">Subtotal</th></tr></thead><tbody>'+trI+
         '<tr><td colspan="3" class="cc-r cc-muted">Frete</td><td class="cc-r">'+brl(c.frete)+'</td></tr>'+
